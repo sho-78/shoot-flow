@@ -1122,7 +1122,30 @@ function PersistentApp() {
 
   useEffect(() => {
     if (auth.loaded) {
-      db.getFlows().then(f => { setFlows(f); setFlowsLoaded(true); });
+      db.getFlows().then(async (loadedFlows) => {
+        const SIX_HOURS = 6 * 60 * 60 * 1000;
+        const now = Date.now();
+        let changed = false;
+        for (const flow of loadedFlows) {
+          for (const p of flow.points) {
+            if (p.status === "done" && p.timestamp) {
+              const elapsed = now - new Date(p.timestamp).getTime();
+              if (elapsed > SIX_HOURS) {
+                p.status = "pending";
+                p.shotBy = "";
+                p.timestamp = null;
+                if (p.photoDataUrl) { await PhotoStore.delete(p.id); p.photoDataUrl = null; }
+                changed = true;
+              }
+            }
+          }
+        }
+        if (changed) {
+          for (const flow of loadedFlows) { await db.saveFlow(flow); }
+        }
+        setFlows(loadedFlows);
+        setFlowsLoaded(true);
+      });
     }
   }, [auth.loaded]);
 
