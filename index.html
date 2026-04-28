@@ -50,6 +50,61 @@ const SUPABASE_URL = 'https://nlaghfyjmwcwrwhdepil.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sYWdoZnlqbXdjd3J3aGRlcGlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzM5MzUsImV4cCI6MjA5Mjk0OTkzNX0.yzgGx2dMGPbK_9QGISxPaf00JuB4P11saEmHUuFRm7w';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+/* IndexedDB for local photo storage (saves bandwidth) */
+const PhotoStore = {
+  _dbPromise: null,
+  _openDB() {
+    if (this._dbPromise) return this._dbPromise;
+    this._dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open('ShootFlowPhotos', 1);
+      req.onupgradeneeded = (e) => { e.target.result.createObjectStore('photos'); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return this._dbPromise;
+  },
+  async save(pointId, dataUrl) {
+    const db = await this._openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put(dataUrl, pointId);
+      tx.oncomplete = () => resolve();
+    });
+  },
+  async get(pointId) {
+    const db = await this._openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('photos', 'readonly');
+      const req = tx.objectStore('photos').get(pointId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  },
+  async getMany(pointIds) {
+    const db = await this._openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('photos', 'readonly');
+      const store = tx.objectStore('photos');
+      const results = {};
+      let pending = pointIds.length;
+      if (pending === 0) return resolve(results);
+      for (const id of pointIds) {
+        const req = store.get(id);
+        req.onsuccess = () => { results[id] = req.result || null; if (--pending === 0) resolve(results); };
+        req.onerror = () => { results[id] = null; if (--pending === 0) resolve(results); };
+      }
+    });
+  },
+  async delete(pointId) {
+    const db = await this._openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('photos', 'readwrite');
+      tx.objectStore('photos').delete(pointId);
+      tx.oncomplete = () => resolve();
+    });
+  }
+};
+
 /* Supabase Data Layer */
 const db = {
   async getUsers() {
@@ -76,11 +131,13 @@ const db = {
     const result = [];
     for (const f of flows) {
       const { data: points } = await supabase.from('shoot_points').select('*').eq('flow_id', f.id).order('sort_order');
+      const pointIds = (points || []).map(p => p.id);
+      const localPhotos = await PhotoStore.getMany(pointIds);
       result.push({
         id: f.id, name: f.name, propertyType: f.property_type, createdAt: f.created_at, createdBy: f.created_by || '',
         points: (points || []).map(p => ({
           id: p.id, name: p.name, category: p.category, required: p.required, status: p.status,
-          photoDataUrl: p.photo_data_url, sampleImageUrl: p.sample_image_url, note: p.note || '',
+          photoDataUrl: localPhotos[p.id] || null, sampleImageUrl: p.sample_image_url, note: p.note || '',
           shotBy: p.shot_by || '', timestamp: p.timestamp
         }))
       });
@@ -93,13 +150,19 @@ const db = {
     if (flow.points && flow.points.length > 0) {
       const rows = flow.points.map((p, i) => ({
         id: p.id, flow_id: flow.id, name: p.name, category: p.category, required: p.required,
-        status: p.status, photo_data_url: p.photoDataUrl, sample_image_url: p.sampleImageUrl,
+        status: p.status, photo_data_url: null, sample_image_url: p.sampleImageUrl,
         note: p.note, shot_by: p.shotBy, timestamp: p.timestamp, sort_order: i
       }));
       await supabase.from('shoot_points').insert(rows);
+      // Save photos locally
+      for (const p of flow.points) {
+        if (p.photoDataUrl) await PhotoStore.save(p.id, p.photoDataUrl);
+      }
     }
   },
   async deleteFlow(id) {
+    const { data: points } = await supabase.from('shoot_points').select('id').eq('flow_id', id);
+    if (points) { for (const p of points) await PhotoStore.delete(p.id); }
     await supabase.from('shoot_points').delete().eq('flow_id', id);
     await supabase.from('flows').delete().eq('id', id);
   }
