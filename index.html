@@ -863,9 +863,19 @@ function ShootMode({ flow, onUpdate, onBack, showToast, currentUser }) {
   const catInfo = CATEGORIES[current?.category] || CATEGORIES.interior;
 
   const startCamera = async () => {
-    try { const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } }); streamRef.current = s; if (videoRef.current) videoRef.current.srcObject = s; setCameraActive(true); }
-    catch { alert("カメラへのアクセスを許可してください"); }
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      streamRef.current = s;
+      setCameraActive(true);
+    } catch { alert("カメラへのアクセスを許可してください"); }
   };
+
+  // Attach stream to video element after DOM renders
+  useEffect(() => {
+    if (cameraActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraActive]);
   const stopCamera = () => { if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; } setCameraActive(false); };
   const capturePhoto = () => { if (!videoRef.current || !canvasRef.current) return; const v = videoRef.current, c = canvasRef.current; c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0); setCapturedPhoto(c.toDataURL("image/jpeg", 0.85)); stopCamera(); };
   const confirmPhoto = () => {
