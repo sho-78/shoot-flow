@@ -980,14 +980,23 @@ function useAuthStore() {
   // We need persistent users
   const DEFAULT_ADMIN_OBJ = { id: "admin", username: "admin", password: "admin", displayName: "管理者", role: "admin", createdAt: new Date().toISOString() };
   const [users, setUsers, usersLoaded] = usePersistentState('auth_users', [DEFAULT_ADMIN_OBJ]);
+  const [sessionUserId, setSessionUserId, sessionLoaded] = usePersistentState('auth_session', null);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Restore session on load
+  useEffect(() => {
+    if (usersLoaded && sessionLoaded && sessionUserId && !currentUser) {
+      const found = users.find((u) => u.id === sessionUserId);
+      if (found) setCurrentUser(found);
+    }
+  }, [usersLoaded, sessionLoaded, sessionUserId]);
 
   const login = (username, password) => {
     const user = users.find((u) => u.username === username && u.password === password);
-    if (user) { setCurrentUser(user); return { success: true }; }
+    if (user) { setCurrentUser(user); setSessionUserId(user.id); return { success: true }; }
     return { success: false, error: "ユーザー名またはパスワードが違います" };
   };
-  const logout = () => setCurrentUser(null);
+  const logout = () => { setCurrentUser(null); setSessionUserId(null); };
   const addUser = (userData) => {
     if (users.find((u) => u.username === userData.username)) return { success: false, error: "このユーザー名は既に使用されています" };
     const newUser = { id: Math.random().toString(36).substr(2, 9), ...userData, createdAt: new Date().toISOString() };
@@ -1004,7 +1013,7 @@ function useAuthStore() {
     return { success: true };
   };
   const isAdmin = currentUser?.role === "admin";
-  return { users, currentUser, login, logout, addUser, updateUser, deleteUser, isAdmin, loaded: usersLoaded };
+  return { users, currentUser, login, logout, addUser, updateUser, deleteUser, isAdmin, loaded: usersLoaded && sessionLoaded };
 }
 
 // Wrap main app with persistence
@@ -1016,6 +1025,13 @@ function PersistentApp() {
   const [toast, setToast] = useState(null);
   const activeFlow = flows.find((f) => f.id === activeFlowId);
   const showToast = (msg, type = "success") => setToast({ message: msg, type, key: Date.now() });
+
+  // Auto-navigate to home when session is restored
+  useEffect(() => {
+    if (auth.currentUser && mode === "login") {
+      setMode("home");
+    }
+  }, [auth.currentUser]);
 
   // Hide splash when loaded
   useEffect(() => {
