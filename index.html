@@ -45,18 +45,13 @@ if ('serviceWorker' in navigator) {
 <script type="text/babel">
 const { useState, useCallback, useRef, useEffect } = React;
 
-/* ══════════════════════════════════════════
-   Supabase Client
-   ══════════════════════════════════════════ */
+/* Supabase Client */
 const SUPABASE_URL = 'https://nlaghfyjmwcwrwhdepil.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sYWdoZnlqbXdjd3J3aGRlcGlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzM5MzUsImV4cCI6MjA5Mjk0OTkzNX0.yzgGx2dMGPbK_9QGISxPaf00JuB4P11saEmHUuFRm7w';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ══════════════════════════════════════════
-   Supabase Data Layer
-   ══════════════════════════════════════════ */
+/* Supabase Data Layer */
 const db = {
-  // Users
   async getUsers() {
     const { data } = await supabase.from('app_users').select('*').order('created_at');
     return (data || []).map(u => ({ id: u.id, username: u.username, password: u.password, displayName: u.display_name, role: u.role, createdAt: u.created_at }));
@@ -75,8 +70,6 @@ const db = {
   async deleteUser(id) {
     await supabase.from('app_users').delete().eq('id', id);
   },
-
-  // Flows
   async getFlows() {
     const { data: flows } = await supabase.from('flows').select('*').order('created_at', { ascending: false });
     if (!flows) return [];
@@ -96,7 +89,6 @@ const db = {
   },
   async saveFlow(flow) {
     await supabase.from('flows').upsert({ id: flow.id, name: flow.name, property_type: flow.propertyType, created_at: flow.createdAt, created_by: flow.createdBy });
-    // Delete existing points and re-insert
     await supabase.from('shoot_points').delete().eq('flow_id', flow.id);
     if (flow.points && flow.points.length > 0) {
       const rows = flow.points.map((p, i) => ({
@@ -112,7 +104,6 @@ const db = {
     await supabase.from('flows').delete().eq('id', id);
   }
 };
-
 
 
 /* ══════════════════════════════════════════
@@ -976,64 +967,57 @@ const inputStyle = { width: "100%", padding: "10px 14px", background: "var(--inp
 const shareAllBtnStyle = { width: "100%", marginTop: "10px", padding: "14px", border: "none", borderRadius: "12px", background: "linear-gradient(135deg, #06C755 0%, #04A648 100%)", color: "#fff", fontSize: "14px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", boxShadow: "0 3px 12px rgba(6,199,85,0.35)", transition: "opacity 0.2s" };
 const settingsRowStyle = { width: "100%", display: "flex", alignItems: "center", gap: "10px", padding: "12px 0", background: "none", border: "none", color: "var(--t1)", fontSize: "14px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textAlign: "left" };
 
-
-/* ══════════════════════════════════════════
-   Supabase-backed Auth Store
-   ══════════════════════════════════════════ */
-function useAuthStore() {{
+/* Supabase-backed Auth Store */
+function useAuthStore() {
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
-  // Load users and restore session
-  useEffect(() => {{
-    (async () => {{
+  useEffect(() => {
+    (async () => {
       const u = await db.getUsers();
       setUsers(u);
-      // Restore session from sessionStorage
       const savedId = sessionStorage.getItem('shoot_session');
-      if (savedId) {{
+      if (savedId) {
         const found = u.find(x => x.id === savedId);
         if (found) setCurrentUser(found);
-      }}
+      }
       setLoaded(true);
-    }})();
-  }}, []);
+    })();
+  }, []);
 
-  const refreshUsers = async () => {{ const u = await db.getUsers(); setUsers(u); }};
+  const refreshUsers = async () => { const u = await db.getUsers(); setUsers(u); };
 
-  const login = (username, password) => {{
+  const login = (username, password) => {
     const user = users.find((u) => u.username === username && u.password === password);
-    if (user) {{ setCurrentUser(user); sessionStorage.setItem('shoot_session', user.id); return {{ success: true }}; }}
-    return {{ success: false, error: "ユーザー名またはパスワードが違います" }};
-  }};
-  const logout = () => {{ setCurrentUser(null); sessionStorage.removeItem('shoot_session'); }};
-  const addUser = async (userData) => {{
-    if (users.find((u) => u.username === userData.username)) return {{ success: false, error: "このユーザー名は既に使用されています" }};
-    const newUser = {{ id: Math.random().toString(36).substr(2, 9), ...userData, createdAt: new Date().toISOString() }};
+    if (user) { setCurrentUser(user); sessionStorage.setItem('shoot_session', user.id); return { success: true }; }
+    return { success: false, error: "ユーザー名またはパスワードが違います" };
+  };
+  const logout = () => { setCurrentUser(null); sessionStorage.removeItem('shoot_session'); };
+  const addUser = async (userData) => {
+    if (users.find((u) => u.username === userData.username)) return { success: false, error: "このユーザー名は既に使用されています" };
+    const newUser = { id: Math.random().toString(36).substr(2, 9), ...userData, createdAt: new Date().toISOString() };
     const ok = await db.addUser(newUser);
-    if (ok) {{ await refreshUsers(); return {{ success: true, user: newUser }}; }}
-    return {{ success: false, error: "登録に失敗しました" }};
-  }};
-  const updateUser = async (id, updates) => {{
+    if (ok) { await refreshUsers(); return { success: true, user: newUser }; }
+    return { success: false, error: "登録に失敗しました" };
+  };
+  const updateUser = async (id, updates) => {
     await db.updateUser(id, updates);
     await refreshUsers();
-    if (currentUser?.id === id) setCurrentUser((prev) => ({{ ...prev, ...updates }}));
-  }};
-  const deleteUser = async (id) => {{
-    if (id === "admin") return {{ success: false, error: "デフォルト管理者は削除できません" }};
+    if (currentUser?.id === id) setCurrentUser((prev) => ({ ...prev, ...updates }));
+  };
+  const deleteUser = async (id) => {
+    if (id === "admin") return { success: false, error: "デフォルト管理者は削除できません" };
     await db.deleteUser(id);
     await refreshUsers();
-    return {{ success: true }};
-  }};
+    return { success: true };
+  };
   const isAdmin = currentUser?.role === "admin";
-  return {{ users, currentUser, login, logout, addUser, updateUser, deleteUser, isAdmin, loaded }};
-}}
+  return { users, currentUser, login, logout, addUser, updateUser, deleteUser, isAdmin, loaded };
+}
 
-/* ══════════════════════════════════════════
-   Supabase-backed Main App
-   ══════════════════════════════════════════ */
-function PersistentApp() {{
+/* Supabase-backed Main App */
+function PersistentApp() {
   const auth = useAuthStore();
   const [mode, setMode] = useState("login");
   const [flows, setFlows] = useState([]);
@@ -1041,62 +1025,60 @@ function PersistentApp() {{
   const [activeFlowId, setActiveFlowId] = useState(null);
   const [toast, setToast] = useState(null);
   const activeFlow = flows.find((f) => f.id === activeFlowId);
-  const showToast = (msg, type = "success") => setToast({{ message: msg, type, key: Date.now() }});
+  const showToast = (msg, type = "success") => setToast({ message: msg, type, key: Date.now() });
 
-  // Load flows from Supabase
-  useEffect(() => {{
-    if (auth.loaded) {{
-      db.getFlows().then(f => {{ setFlows(f); setFlowsLoaded(true); }});
-    }}
-  }}, [auth.loaded]);
+  useEffect(() => {
+    if (auth.loaded) {
+      db.getFlows().then(f => { setFlows(f); setFlowsLoaded(true); });
+    }
+  }, [auth.loaded]);
 
-  // Auto-navigate to home when session is restored
-  useEffect(() => {{
+  useEffect(() => {
     if (auth.currentUser && mode === "login") setMode("home");
-  }}, [auth.currentUser]);
+  }, [auth.currentUser]);
 
-  // Hide splash
-  useEffect(() => {{
-    if (auth.loaded && flowsLoaded) {{
+  useEffect(() => {
+    if (auth.loaded && flowsLoaded) {
       setTimeout(() => document.getElementById('splash')?.classList.add('hide'), 300);
-    }}
-  }}, [auth.loaded, flowsLoaded]);
+    }
+  }, [auth.loaded, flowsLoaded]);
 
-  const createFlow = async (name, presetKey) => {{
+  const createFlow = async (name, presetKey) => {
     const preset = PROPERTY_PRESETS[presetKey];
     const uid = () => Math.random().toString(36).substr(2, 9);
-    const nf = {{ id: uid(), name, propertyType: presetKey, createdAt: new Date().toISOString(), createdBy: auth.currentUser?.displayName || "",
-      points: preset.points.map((p) => ({{ id: uid(), ...p, status: "pending", photoDataUrl: null, sampleImageUrl: null, note: "", timestamp: null, shotBy: "" }})) }};
+    const nf = { id: uid(), name, propertyType: presetKey, createdAt: new Date().toISOString(), createdBy: auth.currentUser?.displayName || "",
+      points: preset.points.map((p) => ({ id: uid(), ...p, status: "pending", photoDataUrl: null, sampleImageUrl: null, note: "", timestamp: null, shotBy: "" })) };
     await db.saveFlow(nf);
     setFlows(await db.getFlows());
     setActiveFlowId(nf.id); setMode("admin");
-  }};
-  const updateFlow = async (u) => {{
+  };
+  const updateFlow = async (u) => {
     await db.saveFlow(u);
     setFlows(await db.getFlows());
-  }};
-  const deleteFlow = async (id) => {{
+  };
+  const deleteFlow = async (id) => {
     await db.deleteFlow(id);
     setFlows(await db.getFlows());
-    if (activeFlowId === id) {{ setActiveFlowId(null); setMode("home"); }}
-  }};
-  const handleLogout = () => {{ auth.logout(); setMode("login"); }};
+    if (activeFlowId === id) { setActiveFlowId(null); setMode("home"); }
+  };
+  const handleLogout = () => { auth.logout(); setMode("login"); };
 
   if (!auth.loaded || !flowsLoaded) return null;
-  if (!auth.currentUser) return <><LoginScreen auth={{auth}} onSuccess={{() => setMode("home")}} />{{toast && <Toast {{...toast}} onDone={{() => setToast(null)}} />}}</>;
+  if (!auth.currentUser) return <><LoginScreen auth={auth} onSuccess={() => setMode("home")} />{toast && <Toast {...toast} onDone={() => setToast(null)} />}</>;
 
-  const content = (() => {{
-    if (mode === "settings") return <SettingsScreen auth={{auth}} onBack={{() => setMode("home")}} onLogout={{handleLogout}} showToast={{showToast}} onNavigateUsers={{() => setMode("users")}} />;
-    if (mode === "users" && auth.isAdmin) return <UserManagement auth={{auth}} onBack={{() => setMode("settings")}} showToast={{showToast}} />;
-    if (mode === "shoot" && activeFlow) return <ShootMode flow={{activeFlow}} onUpdate={{updateFlow}} onBack={{() => setMode("admin")}} showToast={{showToast}} currentUser={{auth.currentUser}} />;
-    if (mode === "admin" && activeFlow) return <AdminMode flow={{activeFlow}} onUpdate={{updateFlow}} onStartShoot={{() => setMode("shoot")}} onBack={{() => {{ setActiveFlowId(null); setMode("home"); }}}} onDelete={{() => deleteFlow(activeFlow.id)}} showToast={{showToast}} isAdmin={{auth.isAdmin}} />;
-    return <HomeScreen flows={{flows}} onCreateFlow={{createFlow}} onSelectFlow={{(id) => {{ setActiveFlowId(id); setMode("admin"); }}}} auth={{auth}} onSettings={{() => setMode("settings")}} />;
-  }})();
+  const content = (() => {
+    if (mode === "settings") return <SettingsScreen auth={auth} onBack={() => setMode("home")} onLogout={handleLogout} showToast={showToast} onNavigateUsers={() => setMode("users")} />;
+    if (mode === "users" && auth.isAdmin) return <UserManagement auth={auth} onBack={() => setMode("settings")} showToast={showToast} />;
+    if (mode === "shoot" && activeFlow) return <ShootMode flow={activeFlow} onUpdate={updateFlow} onBack={() => setMode("admin")} showToast={showToast} currentUser={auth.currentUser} />;
+    if (mode === "admin" && activeFlow) return <AdminMode flow={activeFlow} onUpdate={updateFlow} onStartShoot={() => setMode("shoot")} onBack={() => { setActiveFlowId(null); setMode("home"); }} onDelete={() => deleteFlow(activeFlow.id)} showToast={showToast} isAdmin={auth.isAdmin} />;
+    return <HomeScreen flows={flows} onCreateFlow={createFlow} onSelectFlow={(id) => { setActiveFlowId(id); setMode("admin"); }} auth={auth} onSettings={() => setMode("settings")} />;
+  })();
 
-  return <>{{content}}{{toast && <Toast {{...toast}} onDone={{() => setToast(null)}} />}}</>;
-}}
+  return <>{content}{toast && <Toast {...toast} onDone={() => setToast(null)} />}</>;
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(<PersistentApp />);
+
 </script>
 </body>
 </html>
