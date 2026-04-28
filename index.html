@@ -180,7 +180,7 @@ const DEFAULT_ADMIN = { id: "admin", username: "admin", password: "admin", displ
 /* ══════════════════════════════════════════
    Auth Store (in-memory, React state)
    ══════════════════════════════════════════ */
-function useAuthStore() {
+function _BaseAuthStore() {
   const [users, setUsers] = useState([DEFAULT_ADMIN]);
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -975,7 +975,7 @@ const settingsRowStyle = { width: "100%", display: "flex", alignItems: "center",
 
 
 // Override useAuthStore to use IndexedDB
-const OriginalAuthStore = useAuthStore;
+const OriginalAuthStore = _BaseAuthStore;
 function useAuthStore() {
   // We need persistent users
   const DEFAULT_ADMIN_OBJ = { id: "admin", username: "admin", password: "admin", displayName: "管理者", role: "admin", createdAt: new Date().toISOString() };
