@@ -856,6 +856,7 @@ function ShootMode({ flow, onUpdate, onBack, showToast, currentUser }) {
   const [showList, setShowList] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [sampleZoom, setSampleZoom] = useState(false);
   const videoRef = useRef(null); const streamRef = useRef(null); const canvasRef = useRef(null);
 
   const current = flow.points[currentIndex];
@@ -980,18 +981,27 @@ function ShootMode({ flow, onUpdate, onBack, showToast, currentUser }) {
             </div>
           </div>
         ) : cameraActive ? (
-          <div style={{ width: "100%", maxWidth: "500px" }}>
-            {current?.sampleImageUrl && (
-              <div style={{ marginBottom: "8px", position: "relative" }}>
-                <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid #9B59B6" }}>
-                  <img src={current.sampleImageUrl} alt="s" style={{ width: "100%", display: "block", maxHeight: "30vh", objectFit: "cover" }} />
+          <div style={{ width: "100%", maxWidth: "500px", position: "relative" }}>
+            {/* Sample zoom overlay */}
+            {sampleZoom && current?.sampleImageUrl && (
+              <div onClick={() => setSampleZoom(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+                <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%" }}>
+                  <img src={current.sampleImageUrl} alt="sample" style={{ maxWidth: "100%", maxHeight: "85vh", objectFit: "contain", borderRadius: "8px" }} />
+                  <div style={{ position: "absolute", top: "8px", left: "8px", background: "#9B59B6", color: "#fff", padding: "4px 12px", borderRadius: "6px", fontSize: "13px", fontWeight: 700 }}>📷 見本</div>
+                  <div style={{ textAlign: "center", marginTop: "12px", color: "#fff", fontSize: "13px" }}>タップで閉じる</div>
                 </div>
-                <div style={{ position: "absolute", top: "8px", left: "8px", background: "#9B59B6", color: "#fff", padding: "3px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>📷 見本</div>
               </div>
             )}
             <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid var(--accent)", position: "relative", marginBottom: "16px" }}>
               <video ref={videoRef} autoPlay={true} playsInline={true} muted={true} style={{ width: "100%", display: "block", background: "#000" }} />
               <div style={{ position: "absolute", top: "8px", left: "8px", background: `${catInfo.color}CC`, color: "#fff", padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 700, backdropFilter: "blur(4px)", pointerEvents: "none" }}>{catInfo.icon} {current?.name}</div>
+              {/* Floating sample thumbnail */}
+              {current?.sampleImageUrl && (
+                <div onClick={() => setSampleZoom(true)} style={{ position: "absolute", bottom: "8px", right: "8px", width: "80px", height: "80px", borderRadius: "10px", overflow: "hidden", border: "2px solid #9B59B6", cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.5)" }}>
+                  <img src={current.sampleImageUrl} alt="s" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#9B59B6", color: "#fff", fontSize: "8px", textAlign: "center", fontWeight: 700, lineHeight: "14px" }}>見本</div>
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", gap: "10px", alignItems: "center", justifyContent: "center" }}>
               <button onClick={stopCamera} style={{ ...secondaryBtnStyle, padding: "12px 20px" }}>キャンセル</button>
