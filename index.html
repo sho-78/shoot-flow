@@ -14,13 +14,10 @@
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body, #root { height: 100%; width: 100%; overflow-x: hidden; }
   body { background: #0C0E14; font-family: 'Noto Sans JP', 'Helvetica Neue', sans-serif; }
-  /* iOS safe area */
   @supports (padding-top: env(safe-area-inset-top)) {
     body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
   }
-  /* Prevent pull-to-refresh in standalone mode */
   body { overscroll-behavior-y: contain; }
-  /* Splash screen */
   #splash { position: fixed; inset: 0; background: #0C0E14; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 99999; transition: opacity 0.4s; }
   #splash.hide { opacity: 0; pointer-events: none; }
   #splash .icon { font-size: 64px; margin-bottom: 12px; }
@@ -35,9 +32,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <script>
-// Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -49,66 +46,72 @@ if ('serviceWorker' in navigator) {
 const { useState, useCallback, useRef, useEffect } = React;
 
 /* ══════════════════════════════════════════
-   IndexedDB Persistence Layer
+   Supabase Client
    ══════════════════════════════════════════ */
-const DB_NAME = 'ShootFlowDB';
-const DB_VERSION = 1;
+const SUPABASE_URL = 'https://nlaghfyjmwcwrwhdepil.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sYWdoZnlqbXdjd3J3aGRlcGlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzM5MzUsImV4cCI6MjA5Mjk0OTkzNX0.yzgGx2dMGPbK_9QGISxPaf00JuB4P11saEmHUuFRm7w';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('store')) db.createObjectStore('store');
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+/* ══════════════════════════════════════════
+   Supabase Data Layer
+   ══════════════════════════════════════════ */
+const db = {
+  // Users
+  async getUsers() {
+    const { data } = await supabase.from('app_users').select('*').order('created_at');
+    return (data || []).map(u => ({ id: u.id, username: u.username, password: u.password, displayName: u.display_name, role: u.role, createdAt: u.created_at }));
+  },
+  async addUser(user) {
+    const { error } = await supabase.from('app_users').insert({ id: user.id, username: user.username, password: user.password, display_name: user.displayName, role: user.role });
+    return !error;
+  },
+  async updateUser(id, updates) {
+    const mapped = {};
+    if (updates.displayName !== undefined) mapped.display_name = updates.displayName;
+    if (updates.password !== undefined) mapped.password = updates.password;
+    if (updates.role !== undefined) mapped.role = updates.role;
+    await supabase.from('app_users').update(mapped).eq('id', id);
+  },
+  async deleteUser(id) {
+    await supabase.from('app_users').delete().eq('id', id);
+  },
 
-async function dbGet(key) {
-  const db = await openDB();
-  return new Promise((resolve) => {
-    const tx = db.transaction('store', 'readonly');
-    const req = tx.objectStore('store').get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(undefined);
-  });
-}
-
-async function dbSet(key, value) {
-  const db = await openDB();
-  return new Promise((resolve) => {
-    const tx = db.transaction('store', 'readwrite');
-    tx.objectStore('store').put(value, key);
-    tx.oncomplete = () => resolve();
-  });
-}
-
-// Persistence hooks
-function usePersistentState(key, defaultValue) {
-  const [state, setState] = useState(defaultValue);
-  const [loaded, setLoaded] = useState(false);
-  const stateRef = useRef(state);
-
-  useEffect(() => {
-    dbGet(key).then((val) => {
-      if (val !== undefined) { setState(val); stateRef.current = val; }
-      setLoaded(true);
-    });
-  }, [key]);
-
-  const setPersistent = useCallback((updater) => {
-    setState((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      stateRef.current = next;
-      dbSet(key, next);
-      return next;
-    });
-  }, [key]);
-
-  return [state, setPersistent, loaded];
-}
+  // Flows
+  async getFlows() {
+    const { data: flows } = await supabase.from('flows').select('*').order('created_at', { ascending: false });
+    if (!flows) return [];
+    const result = [];
+    for (const f of flows) {
+      const { data: points } = await supabase.from('shoot_points').select('*').eq('flow_id', f.id).order('sort_order');
+      result.push({
+        id: f.id, name: f.name, propertyType: f.property_type, createdAt: f.created_at, createdBy: f.created_by || '',
+        points: (points || []).map(p => ({
+          id: p.id, name: p.name, category: p.category, required: p.required, status: p.status,
+          photoDataUrl: p.photo_data_url, sampleImageUrl: p.sample_image_url, note: p.note || '',
+          shotBy: p.shot_by || '', timestamp: p.timestamp
+        }))
+      });
+    }
+    return result;
+  },
+  async saveFlow(flow) {
+    await supabase.from('flows').upsert({ id: flow.id, name: flow.name, property_type: flow.propertyType, created_at: flow.createdAt, created_by: flow.createdBy });
+    // Delete existing points and re-insert
+    await supabase.from('shoot_points').delete().eq('flow_id', flow.id);
+    if (flow.points && flow.points.length > 0) {
+      const rows = flow.points.map((p, i) => ({
+        id: p.id, flow_id: flow.id, name: p.name, category: p.category, required: p.required,
+        status: p.status, photo_data_url: p.photoDataUrl, sample_image_url: p.sampleImageUrl,
+        note: p.note, shot_by: p.shotBy, timestamp: p.timestamp, sort_order: i
+      }));
+      await supabase.from('shoot_points').insert(rows);
+    }
+  },
+  async deleteFlow(id) {
+    await supabase.from('shoot_points').delete().eq('flow_id', id);
+    await supabase.from('flows').delete().eq('id', id);
+  }
+};
 
 
 
@@ -974,96 +977,124 @@ const shareAllBtnStyle = { width: "100%", marginTop: "10px", padding: "14px", bo
 const settingsRowStyle = { width: "100%", display: "flex", alignItems: "center", gap: "10px", padding: "12px 0", background: "none", border: "none", color: "var(--t1)", fontSize: "14px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textAlign: "left" };
 
 
-// Override useAuthStore to use IndexedDB
-const OriginalAuthStore = _BaseAuthStore;
-function useAuthStore() {
-  // We need persistent users
-  const DEFAULT_ADMIN_OBJ = { id: "admin", username: "admin", password: "admin", displayName: "管理者", role: "admin", createdAt: new Date().toISOString() };
-  const [users, setUsers, usersLoaded] = usePersistentState('auth_users', [DEFAULT_ADMIN_OBJ]);
-  const [sessionUserId, setSessionUserId, sessionLoaded] = usePersistentState('auth_session', null);
+/* ══════════════════════════════════════════
+   Supabase-backed Auth Store
+   ══════════════════════════════════════════ */
+function useAuthStore() {{
+  const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
-  // Restore session on load
-  useEffect(() => {
-    if (usersLoaded && sessionLoaded && sessionUserId && !currentUser) {
-      const found = users.find((u) => u.id === sessionUserId);
-      if (found) setCurrentUser(found);
-    }
-  }, [usersLoaded, sessionLoaded, sessionUserId]);
+  // Load users and restore session
+  useEffect(() => {{
+    (async () => {{
+      const u = await db.getUsers();
+      setUsers(u);
+      // Restore session from sessionStorage
+      const savedId = sessionStorage.getItem('shoot_session');
+      if (savedId) {{
+        const found = u.find(x => x.id === savedId);
+        if (found) setCurrentUser(found);
+      }}
+      setLoaded(true);
+    }})();
+  }}, []);
 
-  const login = (username, password) => {
+  const refreshUsers = async () => {{ const u = await db.getUsers(); setUsers(u); }};
+
+  const login = (username, password) => {{
     const user = users.find((u) => u.username === username && u.password === password);
-    if (user) { setCurrentUser(user); setSessionUserId(user.id); return { success: true }; }
-    return { success: false, error: "ユーザー名またはパスワードが違います" };
-  };
-  const logout = () => { setCurrentUser(null); setSessionUserId(null); };
-  const addUser = (userData) => {
-    if (users.find((u) => u.username === userData.username)) return { success: false, error: "このユーザー名は既に使用されています" };
-    const newUser = { id: Math.random().toString(36).substr(2, 9), ...userData, createdAt: new Date().toISOString() };
-    setUsers((prev) => [...prev, newUser]);
-    return { success: true, user: newUser };
-  };
-  const updateUser = (id, updates) => {
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
-    if (currentUser?.id === id) setCurrentUser((prev) => ({ ...prev, ...updates }));
-  };
-  const deleteUser = (id) => {
-    if (id === "admin") return { success: false, error: "デフォルト管理者は削除できません" };
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    return { success: true };
-  };
+    if (user) {{ setCurrentUser(user); sessionStorage.setItem('shoot_session', user.id); return {{ success: true }}; }}
+    return {{ success: false, error: "ユーザー名またはパスワードが違います" }};
+  }};
+  const logout = () => {{ setCurrentUser(null); sessionStorage.removeItem('shoot_session'); }};
+  const addUser = async (userData) => {{
+    if (users.find((u) => u.username === userData.username)) return {{ success: false, error: "このユーザー名は既に使用されています" }};
+    const newUser = {{ id: Math.random().toString(36).substr(2, 9), ...userData, createdAt: new Date().toISOString() }};
+    const ok = await db.addUser(newUser);
+    if (ok) {{ await refreshUsers(); return {{ success: true, user: newUser }}; }}
+    return {{ success: false, error: "登録に失敗しました" }};
+  }};
+  const updateUser = async (id, updates) => {{
+    await db.updateUser(id, updates);
+    await refreshUsers();
+    if (currentUser?.id === id) setCurrentUser((prev) => ({{ ...prev, ...updates }}));
+  }};
+  const deleteUser = async (id) => {{
+    if (id === "admin") return {{ success: false, error: "デフォルト管理者は削除できません" }};
+    await db.deleteUser(id);
+    await refreshUsers();
+    return {{ success: true }};
+  }};
   const isAdmin = currentUser?.role === "admin";
-  return { users, currentUser, login, logout, addUser, updateUser, deleteUser, isAdmin, loaded: usersLoaded && sessionLoaded };
-}
+  return {{ users, currentUser, login, logout, addUser, updateUser, deleteUser, isAdmin, loaded }};
+}}
 
-// Wrap main app with persistence
-function PersistentApp() {
+/* ══════════════════════════════════════════
+   Supabase-backed Main App
+   ══════════════════════════════════════════ */
+function PersistentApp() {{
   const auth = useAuthStore();
   const [mode, setMode] = useState("login");
-  const [flows, setFlows, flowsLoaded] = usePersistentState('app_flows', []);
+  const [flows, setFlows] = useState([]);
+  const [flowsLoaded, setFlowsLoaded] = useState(false);
   const [activeFlowId, setActiveFlowId] = useState(null);
   const [toast, setToast] = useState(null);
   const activeFlow = flows.find((f) => f.id === activeFlowId);
-  const showToast = (msg, type = "success") => setToast({ message: msg, type, key: Date.now() });
+  const showToast = (msg, type = "success") => setToast({{ message: msg, type, key: Date.now() }});
+
+  // Load flows from Supabase
+  useEffect(() => {{
+    if (auth.loaded) {{
+      db.getFlows().then(f => {{ setFlows(f); setFlowsLoaded(true); }});
+    }}
+  }}, [auth.loaded]);
 
   // Auto-navigate to home when session is restored
-  useEffect(() => {
-    if (auth.currentUser && mode === "login") {
-      setMode("home");
-    }
-  }, [auth.currentUser]);
+  useEffect(() => {{
+    if (auth.currentUser && mode === "login") setMode("home");
+  }}, [auth.currentUser]);
 
-  // Hide splash when loaded
-  useEffect(() => {
-    if (auth.loaded && flowsLoaded) {
+  // Hide splash
+  useEffect(() => {{
+    if (auth.loaded && flowsLoaded) {{
       setTimeout(() => document.getElementById('splash')?.classList.add('hide'), 300);
-    }
-  }, [auth.loaded, flowsLoaded]);
+    }}
+  }}, [auth.loaded, flowsLoaded]);
 
-  const createFlow = (name, presetKey) => {
+  const createFlow = async (name, presetKey) => {{
     const preset = PROPERTY_PRESETS[presetKey];
     const uid = () => Math.random().toString(36).substr(2, 9);
-    const nf = { id: uid(), name, propertyType: presetKey, createdAt: new Date().toISOString(), createdBy: auth.currentUser?.displayName || "",
-      points: preset.points.map((p) => ({ id: uid(), ...p, status: "pending", photoDataUrl: null, sampleImageUrl: null, note: "", timestamp: null, shotBy: "" })) };
-    setFlows((prev) => [...prev, nf]); setActiveFlowId(nf.id); setMode("admin");
-  };
-  const updateFlow = (u) => setFlows((prev) => prev.map((f) => (f.id === u.id ? u : f)));
-  const deleteFlow = (id) => { setFlows((prev) => prev.filter((f) => f.id !== id)); if (activeFlowId === id) { setActiveFlowId(null); setMode("home"); } };
-  const handleLogout = () => { auth.logout(); setMode("login"); };
+    const nf = {{ id: uid(), name, propertyType: presetKey, createdAt: new Date().toISOString(), createdBy: auth.currentUser?.displayName || "",
+      points: preset.points.map((p) => ({{ id: uid(), ...p, status: "pending", photoDataUrl: null, sampleImageUrl: null, note: "", timestamp: null, shotBy: "" }})) }};
+    await db.saveFlow(nf);
+    setFlows(await db.getFlows());
+    setActiveFlowId(nf.id); setMode("admin");
+  }};
+  const updateFlow = async (u) => {{
+    await db.saveFlow(u);
+    setFlows(await db.getFlows());
+  }};
+  const deleteFlow = async (id) => {{
+    await db.deleteFlow(id);
+    setFlows(await db.getFlows());
+    if (activeFlowId === id) {{ setActiveFlowId(null); setMode("home"); }}
+  }};
+  const handleLogout = () => {{ auth.logout(); setMode("login"); }};
 
   if (!auth.loaded || !flowsLoaded) return null;
-  if (!auth.currentUser) return <><LoginScreen auth={auth} onSuccess={() => setMode("home")} />{toast && <Toast {...toast} onDone={() => setToast(null)} />}</>;
+  if (!auth.currentUser) return <><LoginScreen auth={{auth}} onSuccess={{() => setMode("home")}} />{{toast && <Toast {{...toast}} onDone={{() => setToast(null)}} />}}</>;
 
-  const content = (() => {
-    if (mode === "settings") return <SettingsScreen auth={auth} onBack={() => setMode("home")} onLogout={handleLogout} showToast={showToast} onNavigateUsers={() => setMode("users")} />;
-    if (mode === "users" && auth.isAdmin) return <UserManagement auth={auth} onBack={() => setMode("settings")} showToast={showToast} />;
-    if (mode === "shoot" && activeFlow) return <ShootMode flow={activeFlow} onUpdate={updateFlow} onBack={() => setMode("admin")} showToast={showToast} currentUser={auth.currentUser} />;
-    if (mode === "admin" && activeFlow) return <AdminMode flow={activeFlow} onUpdate={updateFlow} onStartShoot={() => setMode("shoot")} onBack={() => { setActiveFlowId(null); setMode("home"); }} onDelete={() => deleteFlow(activeFlow.id)} showToast={showToast} isAdmin={auth.isAdmin} />;
-    return <HomeScreen flows={flows} onCreateFlow={createFlow} onSelectFlow={(id) => { setActiveFlowId(id); setMode("admin"); }} auth={auth} onSettings={() => setMode("settings")} />;
-  })();
+  const content = (() => {{
+    if (mode === "settings") return <SettingsScreen auth={{auth}} onBack={{() => setMode("home")}} onLogout={{handleLogout}} showToast={{showToast}} onNavigateUsers={{() => setMode("users")}} />;
+    if (mode === "users" && auth.isAdmin) return <UserManagement auth={{auth}} onBack={{() => setMode("settings")}} showToast={{showToast}} />;
+    if (mode === "shoot" && activeFlow) return <ShootMode flow={{activeFlow}} onUpdate={{updateFlow}} onBack={{() => setMode("admin")}} showToast={{showToast}} currentUser={{auth.currentUser}} />;
+    if (mode === "admin" && activeFlow) return <AdminMode flow={{activeFlow}} onUpdate={{updateFlow}} onStartShoot={{() => setMode("shoot")}} onBack={{() => {{ setActiveFlowId(null); setMode("home"); }}}} onDelete={{() => deleteFlow(activeFlow.id)}} showToast={{showToast}} isAdmin={{auth.isAdmin}} />;
+    return <HomeScreen flows={{flows}} onCreateFlow={{createFlow}} onSelectFlow={{(id) => {{ setActiveFlowId(id); setMode("admin"); }}}} auth={{auth}} onSettings={{() => setMode("settings")}} />;
+  }})();
 
-  return <>{content}{toast && <Toast {...toast} onDone={() => setToast(null)} />}</>;
-}
+  return <>{{content}}{{toast && <Toast {{...toast}} onDone={{() => setToast(null)}} />}}</>;
+}}
 
 ReactDOM.createRoot(document.getElementById('root')).render(<PersistentApp />);
 </script>
