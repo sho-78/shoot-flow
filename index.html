@@ -957,24 +957,28 @@ function ShootMode({ flow, onUpdate, onBack, showToast, currentUser }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "16px", minHeight: "50vh" }}>
         {capturedPhoto ? (
           <div style={{ width: "100%", maxWidth: "500px" }}>
-            {current?.sampleImageUrl && (
-              <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-                <div style={{ flex: 1, borderRadius: "10px", overflow: "hidden", border: "2px solid #9B59B6", position: "relative" }}>
-                  <img src={current.sampleImageUrl} alt="s" style={{ width: "100%", display: "block", aspectRatio: "4/3", objectFit: "cover" }} />
-                  <div style={{ position: "absolute", bottom: "4px", left: "4px", background: "#9B59B6", color: "#fff", padding: "2px 6px", borderRadius: "4px", fontSize: "9px", fontWeight: 700 }}>見本</div>
-                </div>
-                <div style={{ flex: 1, borderRadius: "10px", overflow: "hidden", border: "2px solid var(--accent)", position: "relative" }}>
-                  <img src={capturedPhoto} alt="c" style={{ width: "100%", display: "block", aspectRatio: "4/3", objectFit: "cover" }} />
-                  <div style={{ position: "absolute", bottom: "4px", left: "4px", background: "var(--accent)", color: "#fff", padding: "2px 6px", borderRadius: "4px", fontSize: "9px", fontWeight: 700 }}>撮影</div>
+            {/* Sample zoom overlay */}
+            {sampleZoom && current?.sampleImageUrl && (
+              <div onClick={() => setSampleZoom(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+                <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%" }}>
+                  <img src={current.sampleImageUrl} alt="sample" style={{ maxWidth: "100%", maxHeight: "85vh", objectFit: "contain", borderRadius: "8px" }} />
+                  <div style={{ position: "absolute", top: "8px", left: "8px", background: "#9B59B6", color: "#fff", padding: "4px 12px", borderRadius: "6px", fontSize: "13px", fontWeight: 700 }}>📷 見本</div>
+                  <div style={{ textAlign: "center", marginTop: "12px", color: "#fff", fontSize: "13px" }}>タップで閉じる</div>
                 </div>
               </div>
             )}
-            {!current?.sampleImageUrl && (
-              <div style={{ borderRadius: "16px", overflow: "hidden", border: "2px solid var(--bdr)", marginBottom: "16px", position: "relative" }}>
-                <img src={capturedPhoto} alt="" style={{ width: "100%", display: "block" }} />
-                <div style={{ position: "absolute", top: "12px", left: "12px", background: "rgba(0,0,0,0.7)", color: "#fff", padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600 }}>{current?.name}</div>
-              </div>
-            )}
+            {/* Captured photo full display */}
+            <div style={{ borderRadius: "16px", overflow: "hidden", border: "2px solid var(--accent)", marginBottom: "16px", position: "relative" }}>
+              <img src={capturedPhoto} alt="captured" style={{ width: "100%", display: "block" }} />
+              <div style={{ position: "absolute", top: "8px", left: "8px", background: "var(--accent)", color: "#fff", padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>{current?.name}</div>
+              {/* Floating sample thumbnail */}
+              {current?.sampleImageUrl && (
+                <div onClick={() => setSampleZoom(true)} style={{ position: "absolute", bottom: "8px", right: "8px", width: "80px", height: "80px", borderRadius: "10px", overflow: "hidden", border: "2px solid #9B59B6", cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.5)" }}>
+                  <img src={current.sampleImageUrl} alt="s" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#9B59B6", color: "#fff", fontSize: "8px", textAlign: "center", fontWeight: 700, lineHeight: "14px" }}>見本</div>
+                </div>
+              )}
+            </div>
             <div style={{ display: "flex", gap: "10px" }}>
               <button onClick={() => { setCapturedPhoto(null); startCamera(); }} style={{ ...secondaryBtnStyle, flex: 1, padding: "14px", fontSize: "14px" }}>🔄 撮り直し</button>
               <button onClick={confirmPhoto} style={{ ...primaryBtnStyle, flex: 1, padding: "14px", fontSize: "14px", background: "#27AE60" }}>✓ 確定</button>
